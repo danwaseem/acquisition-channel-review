@@ -1,0 +1,7 @@
+channel,variable_cost_per_signup,fixed_monthly_cost,contribution_per_month
+paid_search,15,2000,11
+paid_social,15,3000,11
+affiliate,35,1500,11
+referral,30,800,11
+direct_mail,15,1000,11
+podcast,15,1000,11
