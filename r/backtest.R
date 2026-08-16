@@ -172,7 +172,7 @@ for (channel_name in long_channels) {
     if (nrow(test) != horizon) {
       stop(sprintf(
         "%s fold ending week %d does not have %d held-out weeks",
-        channel, train_end, horizon
+        channel_name, train_end, horizon
       ), call. = FALSE)
     }
 
