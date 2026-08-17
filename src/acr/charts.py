@@ -156,18 +156,6 @@ def chart_forecast_by_channel(tables: Path, figures: Path) -> Path:
             label="Forecast median" if idx == 0 else None,
         )
         ax.axvline(start, color=MUTED, linewidth=1.0)
-        if idx == 0:
-            ymax = max(float(hist["signups"].max()), float(fut["p95"].max()))
-            ax.text(
-                start,
-                ymax * 0.98,
-                "Forecast starts",
-                color=MUTED,
-                fontsize=8,
-                rotation=90,
-                va="top",
-                ha="right",
-            )
         method = METHOD_LABEL.get(str(methods.loc[channel]), str(methods.loc[channel]))
         ax.set_title(f"{channel_name(channel)} · {method}", fontsize=11, color=INK)
         ax.set_ylim(bottom=0)
@@ -179,11 +167,18 @@ def chart_forecast_by_channel(tables: Path, figures: Path) -> Path:
         Line2D([0], [0], color=BLUE, linewidth=2.0, linestyle="--", label="Forecast median"),
         Patch(facecolor=BAND_80, edgecolor="none", label="80% band"),
         Patch(facecolor=BAND_90, edgecolor="none", label="90% band"),
+        Line2D(
+            [0],
+            [0],
+            color=MUTED,
+            linewidth=1.0,
+            label="Forecast starts (2025-12-29)",
+        ),
     ]
     fig.legend(
         handles=handles,
         loc="lower center",
-        ncol=4,
+        ncol=5,
         frameon=False,
         fontsize=9,
         bbox_to_anchor=(0.5, 0.01),
@@ -212,8 +207,10 @@ def chart_backtest_error(tables: Path, figures: Path) -> Path:
 
     y_positions = np.arange(len(channels))
     height = 0.22
+    # Higher y is drawn higher on the panel, so reverse the variant offset
+    # to put Seasonal naive at the top of each group.
     for v_idx, variant in enumerate(VARIANT_ORDER):
-        offsets = y_positions + (v_idx - 1) * height
+        offsets = y_positions + (1 - v_idx) * height
         values = []
         chosen_flags = []
         for channel in channels:
@@ -246,15 +243,18 @@ def chart_backtest_error(tables: Path, figures: Path) -> Path:
     ax.set_yticklabels([channel_name(ch) for ch in channels], color=MUTED)
     ax.set_xlabel("Mean weekly MAPE (%)")
     ax.set_title("Back-test error by forecast method (lower is better)")
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.14),
+    ax.set_xlim(left=0)
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
         ncol=3,
         frameon=False,
         fontsize=9,
     )
-    ax.set_xlim(left=0)
-    fig.subplots_adjust(left=0.18, right=0.96, top=0.78, bottom=0.14)
+    fig.subplots_adjust(left=0.18, right=0.96, top=0.88, bottom=0.28)
     path = figures / "backtest_error.png"
     _save(fig, path)
     return path
@@ -313,19 +313,28 @@ def chart_did_gap(tables: Path, figures: Path) -> Path:
         linewidth=0,
     )
     ax.hlines(effect, window_start, window_end, color=INK, linewidth=2.0)
+    y_top = float(y.max()) + 15.0
+    ax.set_ylim(top=y_top)
+    label_box = dict(facecolor=BG, alpha=0.9, edgecolor="none")
     ax.text(
         window_start + pd.Timedelta(days=2),
-        float(y.max()) * 0.92,
+        y_top - 3.0,
         "Paid social budget +51%",
         color=MUTED,
         fontsize=9,
+        va="top",
+        zorder=5,
+        bbox=label_box,
     )
     ax.text(
         window_start + pd.Timedelta(days=2),
-        effect + 1.5,
+        ci_low - 1.5,
         "Estimated effect +19%",
         color=INK,
         fontsize=9,
+        va="top",
+        zorder=5,
+        bbox=label_box,
     )
     ax.set_ylabel("Paid social signups vs other channels (% vs normal)")
     ax.set_title("What the paid social budget increase did")
@@ -355,16 +364,20 @@ def chart_ratio_ranges(tables: Path, figures: Path) -> Path:
             fontsize=9,
         )
     ax.axvline(1.0, color=MUTED, linewidth=1.2, linestyle="--")
-    ax.text(
-        1.02,
-        float(y.max()) + 0.35,
-        "Break-even within 12 months",
-        color=MUTED,
-        fontsize=8,
-    )
     ax.set_yticks(y)
     ax.set_yticklabels(
         [channel_name(ch) for ch in decisions["channel"]], color=MUTED
+    )
+    ax.set_ylim(-0.75, float(y.max()) + 0.45)
+    ax.text(
+        1.02,
+        -0.55,
+        "Break-even within 12 months",
+        color=MUTED,
+        fontsize=8,
+        va="bottom",
+        ha="left",
+        bbox=dict(facecolor=BG, alpha=0.9, edgecolor="none"),
     )
     ax.set_xlabel("12-month value per $1 spent (5% to 95% range)")
     ax.set_title("How sure we are about each channel")
@@ -389,16 +402,17 @@ def chart_net_contribution(tables: Path, figures: Path) -> Path:
         linewidth=1.4,
         zorder=3,
     )
+    gap = 12000.0
+    label_x = []
     for idx, (_, row) in enumerate(decisions.iterrows()):
-        xpos = float(row["net_median"])
-        ha = "left" if xpos >= 0 else "right"
-        offset = 8000 if xpos >= 0 else -8000
+        xpos = max(0.0, float(row["net_p95"])) + gap
+        label_x.append(xpos)
         ax.text(
-            xpos + offset,
+            xpos,
             y[idx],
             f"{money_k(float(row['net_median']))}  {row['call']}",
             va="center",
-            ha=ha,
+            ha="left",
             color=INK,
             fontsize=8,
         )
@@ -407,9 +421,15 @@ def chart_net_contribution(tables: Path, figures: Path) -> Path:
     ax.set_yticklabels(
         [channel_name(ch) for ch in decisions["channel"]], color=MUTED
     )
-    ax.set_xlabel("12-month net contribution ($)")
+    left = float(min(decisions["net_p5"].min(), decisions["net_median"].min(), 0.0))
+    right = float(max(label_x) + 90000.0)
+    ax.set_xlim(left - 10000.0, right)
+    ax.xaxis.set_major_formatter(
+        plt.FuncFormatter(lambda value, _pos: "$0" if abs(value) < 0.5 else money_k(value))
+    )
+    ax.set_xlabel("12-month net contribution ($k)")
     ax.set_title("Expected 12-month net contribution by channel")
-    fig.subplots_adjust(left=0.18, right=0.88, top=0.88, bottom=0.14)
+    fig.subplots_adjust(left=0.18, right=0.97, top=0.88, bottom=0.14)
     path = figures / "net_contribution.png"
     _save(fig, path)
     return path
@@ -528,9 +548,12 @@ def chart_budget_change(tables: Path, figures: Path) -> Path:
     ax.axhline(0, color=MUTED, linewidth=1.0)
     ax.set_xticks(x)
     ax.set_xticklabels(labels, color=MUTED, fontsize=9)
-    ax.set_ylabel("Change in 12-month net contribution ($)")
+    ax.yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda value, _pos: "$0" if abs(value) < 0.5 else money_k(value))
+    )
+    ax.set_ylabel("Change in 12-month net contribution ($k)")
     ax.set_title("If the freed budget moved all at once (DiD elasticity assumed)")
-    fig.subplots_adjust(left=0.12, right=0.97, top=0.88, bottom=0.18)
+    fig.subplots_adjust(left=0.14, right=0.97, top=0.88, bottom=0.18)
     path = figures / "budget_change.png"
     _save(fig, path)
     return path
