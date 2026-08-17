@@ -73,17 +73,19 @@ def channel_name(channel: str) -> str:
     return CHANNEL_LABEL.get(channel, channel.replace("_", " ").title())
 
 
-def apply_style(ax: plt.Axes, *, horizontal: bool = False) -> None:
+def apply_style(
+    ax: plt.Axes, *, horizontal: bool = False, size_boost: int = 0
+) -> None:
     """Shared look used by every chart."""
     ax.set_facecolor(BG)
     ax.figure.set_facecolor(BG)
-    ax.tick_params(colors=MUTED, labelsize=9)
+    ax.tick_params(colors=MUTED, labelsize=9 + size_boost)
     ax.xaxis.label.set_color(MUTED)
     ax.yaxis.label.set_color(MUTED)
-    ax.xaxis.label.set_size(10)
-    ax.yaxis.label.set_size(10)
+    ax.xaxis.label.set_size(10 + size_boost)
+    ax.yaxis.label.set_size(10 + size_boost)
     ax.title.set_color(INK)
-    ax.title.set_size(13)
+    ax.title.set_size(13 + size_boost)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_color(MUTED)
@@ -288,7 +290,7 @@ def chart_backtest_bands(tables: Path, figures: Path) -> Path:
     return path
 
 
-def chart_did_gap(tables: Path, figures: Path) -> Path:
+def chart_did_gap(tables: Path, figures: Path, *, deck: bool = False) -> Path:
     weekly = pd.read_csv(tables / "did_weekly.csv", parse_dates=["week_start"])
     did = pd.read_csv(tables / "did_translation.csv").iloc[0]
     weekly = weekly.sort_values("week_start")
@@ -298,9 +300,10 @@ def chart_did_gap(tables: Path, figures: Path) -> Path:
     ci_high = (np.exp(float(did["ci_high"])) - 1.0) * 100.0
     window_start = pd.Timestamp("2024-07-01")
     window_end = pd.Timestamp("2024-09-16")
+    boost = 2 if deck else 0
 
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=200)
-    apply_style(ax)
+    apply_style(ax, size_boost=boost)
     ax.axvspan(window_start, window_end, color="#e8e7e3", linewidth=0)
     ax.plot(weekly["week_start"], y, color=BLUE, linewidth=2.0)
     ax.axhline(0, color=MUTED, linewidth=1.0)
@@ -321,7 +324,7 @@ def chart_did_gap(tables: Path, figures: Path) -> Path:
         y_top - 3.0,
         "Paid social budget +51%",
         color=MUTED,
-        fontsize=9,
+        fontsize=9 + boost,
         va="top",
         zorder=5,
         bbox=label_box,
@@ -331,23 +334,31 @@ def chart_did_gap(tables: Path, figures: Path) -> Path:
         ci_low - 1.5,
         "Estimated effect +19%",
         color=INK,
-        fontsize=9,
+        fontsize=9 + boost,
         va="top",
         zorder=5,
         bbox=label_box,
     )
     ax.set_ylabel("Paid social signups vs other channels (% vs normal)")
-    ax.set_title("What the paid social budget increase did")
-    fig.subplots_adjust(left=0.12, right=0.97, top=0.88, bottom=0.14)
-    path = figures / "did_gap.png"
+    if not deck:
+        ax.set_title("What the paid social budget increase did")
+    fig.subplots_adjust(
+        left=0.12,
+        right=0.97,
+        top=0.96 if deck else 0.88,
+        bottom=0.14,
+    )
+    out_dir = figures / "deck" if deck else figures
+    path = out_dir / "did_gap.png"
     _save(fig, path)
     return path
 
 
-def chart_ratio_ranges(tables: Path, figures: Path) -> Path:
+def chart_ratio_ranges(tables: Path, figures: Path, *, deck: bool = False) -> Path:
     decisions = pd.read_csv(tables / "decisions.csv").sort_values("rank")
+    boost = 2 if deck else 0
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=200)
-    apply_style(ax, horizontal=True)
+    apply_style(ax, horizontal=True, size_boost=boost)
     y = np.arange(len(decisions))[::-1]
     for idx, (_, row) in enumerate(decisions.iterrows()):
         color = CALL_COLOR[row["call"]]
@@ -361,7 +372,7 @@ def chart_ratio_ranges(tables: Path, figures: Path) -> Path:
             va="center",
             ha="left",
             color=INK,
-            fontsize=9,
+            fontsize=9 + boost,
         )
     ax.axvline(1.0, color=MUTED, linewidth=1.2, linestyle="--")
     ax.set_yticks(y)
@@ -374,23 +385,31 @@ def chart_ratio_ranges(tables: Path, figures: Path) -> Path:
         -0.55,
         "Break-even within 12 months",
         color=MUTED,
-        fontsize=8,
+        fontsize=8 + boost,
         va="bottom",
         ha="left",
         bbox=dict(facecolor=BG, alpha=0.9, edgecolor="none"),
     )
     ax.set_xlabel("12-month value per $1 spent (5% to 95% range)")
-    ax.set_title("How sure we are about each channel")
-    fig.subplots_adjust(left=0.18, right=0.92, top=0.88, bottom=0.14)
-    path = figures / "ratio_ranges.png"
+    if not deck:
+        ax.set_title("How sure we are about each channel")
+    fig.subplots_adjust(
+        left=0.18,
+        right=0.92,
+        top=0.96 if deck else 0.88,
+        bottom=0.14,
+    )
+    out_dir = figures / "deck" if deck else figures
+    path = out_dir / "ratio_ranges.png"
     _save(fig, path)
     return path
 
 
-def chart_net_contribution(tables: Path, figures: Path) -> Path:
+def chart_net_contribution(tables: Path, figures: Path, *, deck: bool = False) -> Path:
     decisions = pd.read_csv(tables / "decisions.csv").sort_values("rank")
+    boost = 2 if deck else 0
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=200)
-    apply_style(ax, horizontal=True)
+    apply_style(ax, horizontal=True, size_boost=boost)
     y = np.arange(len(decisions))[::-1]
     colors = [CALL_COLOR[call] for call in decisions["call"]]
     ax.barh(y, decisions["net_median"], color=colors, height=0.62, linewidth=0)
@@ -414,7 +433,7 @@ def chart_net_contribution(tables: Path, figures: Path) -> Path:
             va="center",
             ha="left",
             color=INK,
-            fontsize=8,
+            fontsize=8 + boost,
         )
     ax.axvline(0, color=MUTED, linewidth=1.2)
     ax.set_yticks(y)
@@ -428,9 +447,16 @@ def chart_net_contribution(tables: Path, figures: Path) -> Path:
         plt.FuncFormatter(lambda value, _pos: "$0" if abs(value) < 0.5 else money_k(value))
     )
     ax.set_xlabel("12-month net contribution ($k)")
-    ax.set_title("Expected 12-month net contribution by channel")
-    fig.subplots_adjust(left=0.18, right=0.97, top=0.88, bottom=0.14)
-    path = figures / "net_contribution.png"
+    if not deck:
+        ax.set_title("Expected 12-month net contribution by channel")
+    fig.subplots_adjust(
+        left=0.18,
+        right=0.97,
+        top=0.96 if deck else 0.88,
+        bottom=0.14,
+    )
+    out_dir = figures / "deck" if deck else figures
+    path = out_dir / "net_contribution.png"
     _save(fig, path)
     return path
 
@@ -599,6 +625,7 @@ def make_all_charts(
     tables = tables_dir or _tables_dir()
     figures = figures_dir or _figures_dir()
     figures.mkdir(parents=True, exist_ok=True)
+    (figures / "deck").mkdir(parents=True, exist_ok=True)
     paths = [
         chart_forecast_by_channel(tables, figures),
         chart_backtest_error(tables, figures),
@@ -608,6 +635,9 @@ def make_all_charts(
         chart_net_contribution(tables, figures),
         chart_retention_curves(tables, figures),
         chart_budget_change(tables, figures),
+        chart_did_gap(tables, figures, deck=True),
+        chart_ratio_ranges(tables, figures, deck=True),
+        chart_net_contribution(tables, figures, deck=True),
     ]
     return paths
 

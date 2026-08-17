@@ -15,7 +15,6 @@ from pptx.util import Inches, Pt
 
 INK = RGBColor(0x0B, 0x0B, 0x0B)
 MUTED = RGBColor(0x52, 0x51, 0x4E)
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 CARD_FILL = RGBColor(0xFC, 0xFC, 0xFB)
 CARD_LINE = RGBColor(0xE4, 0xE3, 0xDF)
 CALL_RGB = {
@@ -47,6 +46,13 @@ def channel_name(channel: str) -> str:
     return CHANNEL_LABEL.get(channel, channel.replace("_", " ").title())
 
 
+def channel_in_sentence(channel: str, *, sentence_start: bool = False) -> str:
+    name = channel_name(channel)
+    if sentence_start or not name:
+        return name
+    return name[0].lower() + name[1:]
+
+
 def money_k(value: float) -> str:
     signed = "-" if value < 0 else ""
     amount = abs(value) / 1000.0
@@ -73,12 +79,15 @@ def pct_rate(value: float) -> str:
     return f"{value * 100:.1f}"
 
 
+def _no_shadow(shape) -> None:
+    shape.shadow.inherit = False
+
+
 def _set_run_font(run, *, size: int, bold: bool = False, color: RGBColor = INK) -> None:
     run.font.name = "Calibri"
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.color.rgb = color
-    # Force Latin font for older PowerPoint readers.
     rpr = run._r.get_or_add_rPr()
     for tag in ("a:latin", "a:cs", "a:ea"):
         node = rpr.find(qn(tag))
@@ -103,11 +112,17 @@ def _add_textbox(
     anchor=MSO_ANCHOR.TOP,
 ):
     box = slide.shapes.add_textbox(left, top, width, height)
+    _no_shadow(box)
     frame = box.text_frame
     frame.word_wrap = True
     frame.auto_size = None
     try:
-        frame._txBody.bodyPr.set("anchor", {MSO_ANCHOR.TOP: "t", MSO_ANCHOR.MIDDLE: "ctr", MSO_ANCHOR.BOTTOM: "b"}[anchor])
+        frame._txBody.bodyPr.set(
+            "anchor",
+            {MSO_ANCHOR.TOP: "t", MSO_ANCHOR.MIDDLE: "ctr", MSO_ANCHOR.BOTTOM: "b"}[
+                anchor
+            ],
+        )
     except Exception:
         pass
     frame.clear()
@@ -116,6 +131,31 @@ def _add_textbox(
     run = paragraph.add_run()
     run.text = text
     _set_run_font(run, size=size, bold=bold, color=color)
+    return box
+
+
+def _add_rich_textbox(
+    slide,
+    left,
+    top,
+    width,
+    height,
+    parts: list[tuple[str, bool]],
+    *,
+    size: int,
+    color: RGBColor = INK,
+):
+    box = slide.shapes.add_textbox(left, top, width, height)
+    _no_shadow(box)
+    frame = box.text_frame
+    frame.word_wrap = True
+    frame.clear()
+    paragraph = frame.paragraphs[0]
+    paragraph.alignment = PP_ALIGN.LEFT
+    for text, bold in parts:
+        run = paragraph.add_run()
+        run.text = text
+        _set_run_font(run, size=size, bold=bold, color=color)
     return box
 
 
@@ -128,6 +168,7 @@ def _add_multiline(
     lines: list[tuple[str, dict]],
 ):
     box = slide.shapes.add_textbox(left, top, width, height)
+    _no_shadow(box)
     frame = box.text_frame
     frame.word_wrap = True
     frame.clear()
@@ -135,14 +176,33 @@ def _add_multiline(
         paragraph = frame.paragraphs[0] if idx == 0 else frame.add_paragraph()
         paragraph.alignment = style.get("align", PP_ALIGN.LEFT)
         paragraph.space_after = Pt(style.get("space_after", 6))
-        run = paragraph.add_run()
-        run.text = text
-        _set_run_font(
-            run,
-            size=style.get("size", 16),
-            bold=style.get("bold", False),
-            color=style.get("color", INK),
-        )
+        label = style.get("label")
+        if label:
+            run = paragraph.add_run()
+            run.text = label
+            _set_run_font(
+                run,
+                size=style.get("size", 16),
+                bold=True,
+                color=style.get("color", INK),
+            )
+            run = paragraph.add_run()
+            run.text = text
+            _set_run_font(
+                run,
+                size=style.get("size", 16),
+                bold=False,
+                color=style.get("color", INK),
+            )
+        else:
+            run = paragraph.add_run()
+            run.text = text
+            _set_run_font(
+                run,
+                size=style.get("size", 16),
+                bold=style.get("bold", False),
+                color=style.get("color", INK),
+            )
     return box
 
 
@@ -199,6 +259,7 @@ def _title(slide, text: str) -> None:
 
 def _card(slide, left, top, width, height, call: str):
     shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
+    _no_shadow(shape)
     shape.fill.solid()
     shape.fill.fore_color.rgb = CARD_FILL
     shape.line.color.rgb = CARD_LINE
@@ -206,6 +267,7 @@ def _card(slide, left, top, width, height, call: str):
     strip = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE, left, top, width, Inches(0.12)
     )
+    _no_shadow(strip)
     strip.fill.solid()
     strip.fill.fore_color.rgb = CALL_RGB[call]
     strip.line.fill.background()
@@ -238,7 +300,7 @@ def _channels_by_call(decisions: pd.DataFrame, call: str) -> list[str]:
     return decisions.loc[decisions["call"] == call, "channel"].tolist()
 
 
-def build_deck(root: Path | None = None) -> Path:
+def build_deck(out_path: Path | None = None, root: Path | None = None) -> Path:
     root = root or project_root()
     data = _load_inputs(root)
     decisions = data["decisions"]
@@ -249,13 +311,16 @@ def build_deck(root: Path | None = None) -> Path:
     weekly = data["weekly"]
     forecast = data["forecast"]
     figures = data["figures"]
+    deck_figures = figures / "deck"
 
     by_channel = decisions.set_index("channel")
     fund = _channels_by_call(decisions, "FUND")
     cut = _channels_by_call(decisions, "CUT")
     hold_channels = _channels_by_call(decisions, "HOLD")
 
-    freed = float(sum(52.0 * float(forecast.loc[ch, "planned_weekly_spend"]) for ch in cut))
+    freed = float(
+        sum(52.0 * float(forecast.loc[ch, "planned_weekly_spend"]) for ch in cut)
+    )
     stop_cut = float(budget.loc["stop_cut_channels", "extra_net_median"])
 
     prs = Presentation()
@@ -275,16 +340,16 @@ def build_deck(root: Path | None = None) -> Path:
     card_gap = Inches(0.25)
     card_left0 = Inches(0.5)
     card_top = Inches(1.15)
-    card_height = Inches(3.35)
+    card_height = Inches(2.4)
     for idx, (call, channels) in enumerate(cards):
         left = card_left0 + idx * (card_width + card_gap)
         _card(slide1, left, card_top, card_width, card_height, call)
         _add_textbox(
             slide1,
             left + Inches(0.18),
-            card_top + Inches(0.25),
+            card_top + Inches(0.22),
             card_width - Inches(0.36),
-            Inches(0.4),
+            Inches(0.35),
             call,
             size=18,
             bold=True,
@@ -295,37 +360,57 @@ def build_deck(root: Path | None = None) -> Path:
             lines.append(
                 (
                     channel_name(channel),
-                    {"size": 16, "bold": True, "color": INK, "space_after": 2},
+                    {"size": 20, "bold": True, "color": INK, "space_after": 2},
                 )
             )
             lines.append(
                 (
                     ratio_phrase(float(by_channel.loc[channel, "R_median"])),
-                    {"size": 14, "color": MUTED, "space_after": 10},
+                    {"size": 16, "color": MUTED, "space_after": 8},
                 )
             )
         _add_multiline(
             slide1,
             left + Inches(0.18),
-            card_top + Inches(0.75),
+            card_top + Inches(0.6),
             card_width - Inches(0.36),
-            Inches(2.4),
+            Inches(1.7),
             lines,
         )
 
-    line1 = (
-        f"Stopping paid social and affiliate frees {money_k(freed)} a year "
-        f"and adds about {money_k(stop_cut)} in 12-month profit."
-    )
     referral_marginal = float(by_channel.loc["referral", "marginal_return_per_dollar"])
     search_marginal = float(by_channel.loc["paid_search", "marginal_return_per_dollar"])
-    line2 = (
-        "Move the freed money in steps and test each step. "
-        f"Referral returns about ${referral_marginal:.2f} per extra $1, "
-        f"paid search only about ${search_marginal:.2f}."
+    _add_rich_textbox(
+        slide1,
+        Inches(0.5),
+        Inches(3.8),
+        Inches(12.3),
+        Inches(0.55),
+        [
+            ("Stopping paid social and affiliate frees ", False),
+            (money_k(freed), True),
+            (" a year and adds about ", False),
+            (money_k(stop_cut), True),
+            (" in 12-month profit.", False),
+        ],
+        size=18,
     )
-    _add_textbox(slide1, Inches(0.5), Inches(4.7), Inches(12.3), Inches(0.55), line1, size=16)
-    _add_textbox(slide1, Inches(0.5), Inches(5.3), Inches(12.3), Inches(0.7), line2, size=16)
+    _add_rich_textbox(
+        slide1,
+        Inches(0.5),
+        Inches(4.4),
+        Inches(12.3),
+        Inches(0.7),
+        [
+            ("Move the freed money in steps and test each step. ", False),
+            ("Referral returns about ", False),
+            (f"${referral_marginal:.2f}", True),
+            (" per extra $1, paid search only about ", False),
+            (f"${search_marginal:.2f}", True),
+            (".", False),
+        ],
+        size=18,
+    )
     _footer(slide1, 1)
     _notes(
         slide1,
@@ -341,40 +426,38 @@ def build_deck(root: Path | None = None) -> Path:
 
     # Slide 2
     slide2 = prs.slides.add_slide(blank)
-    _title(
-        slide2,
-        "Paid search and referral make the most money; paid social and affiliate lose it",
-    )
-    slide2.shapes.add_picture(
-        str(figures / "net_contribution.png"),
+    _title(slide2, "Search and referral make money; social and affiliate lose it")
+    pic = slide2.shapes.add_picture(
+        str(deck_figures / "net_contribution.png"),
         Inches(0.4),
         Inches(1.15),
-        width=Inches(8.3),
+        width=Inches(8.6),
     )
+    _no_shadow(pic)
     top = decisions.iloc[0]
     losers = decisions.loc[decisions["call"] == "CUT"]
     holders = decisions.loc[decisions["call"] == "HOLD"]
     combined_loss = -float(losers["net_median"].sum())
     bullets = [
         (
-            f"{channel_name(str(top['channel']))} leads at about "
-            f"{money_k(float(top['net_median']))} of 12-month profit.",
+            f"{channel_in_sentence(str(top['channel']), sentence_start=True)} leads "
+            f"at about {money_k(float(top['net_median']))} of 12-month profit.",
             {"size": 16, "color": INK, "space_after": 12},
         ),
         (
-            f"{channel_name(str(losers.iloc[0]['channel']))} and "
-            f"{channel_name(str(losers.iloc[1]['channel']))} lose about "
+            f"{channel_in_sentence(str(losers.iloc[0]['channel']), sentence_start=True)} "
+            f"and {channel_in_sentence(str(losers.iloc[1]['channel']))} lose about "
             f"{money_k(combined_loss)} combined.",
             {"size": 16, "color": INK, "space_after": 12},
         ),
         (
-            f"{channel_name(str(holders.iloc[0]['channel']))} and "
-            f"{channel_name(str(holders.iloc[1]['channel']))} sit close to zero, "
-            f"so we keep learning before we move them.",
+            f"{channel_in_sentence(str(holders.iloc[0]['channel']), sentence_start=True)} "
+            f"and {channel_in_sentence(str(holders.iloc[1]['channel']))} sit close to "
+            "zero, so we keep learning before we move them.",
             {"size": 16, "color": INK, "space_after": 12},
         ),
     ]
-    _add_multiline(slide2, Inches(8.9), Inches(1.5), Inches(3.9), Inches(4.8), bullets)
+    _add_multiline(slide2, Inches(9.2), Inches(1.15), Inches(3.6), Inches(4.8), bullets)
     _footer(slide2, 2)
     _notes(
         slide2,
@@ -390,13 +473,17 @@ def build_deck(root: Path | None = None) -> Path:
     # Slide 3
     slide3 = prs.slides.add_slide(blank)
     _title(slide3, "How sure we are about each channel")
-    slide3.shapes.add_picture(
-        str(figures / "ratio_ranges.png"),
+    pic = slide3.shapes.add_picture(
+        str(deck_figures / "ratio_ranges.png"),
         Inches(0.4),
         Inches(1.15),
-        width=Inches(8.3),
+        width=Inches(8.6),
     )
-    hold_names = " and ".join(channel_name(ch) for ch in hold_channels)
+    _no_shadow(pic)
+    hold_line = " and ".join(
+        channel_in_sentence(ch, sentence_start=(i == 0))
+        for i, ch in enumerate(hold_channels)
+    )
     bullets3 = [
         (
             "Each line shows the likely range for the next 12 months.",
@@ -411,11 +498,11 @@ def build_deck(root: Path | None = None) -> Path:
             {"size": 16, "color": INK, "space_after": 12},
         ),
         (
-            f"Lines that cross $1: not enough evidence yet. {hold_names}.",
+            f"Lines that cross $1: not enough evidence yet. {hold_line}.",
             {"size": 16, "color": MUTED, "space_after": 8},
         ),
     ]
-    _add_multiline(slide3, Inches(8.9), Inches(1.5), Inches(3.9), Inches(4.8), bullets3)
+    _add_multiline(slide3, Inches(9.2), Inches(1.15), Inches(3.6), Inches(4.8), bullets3)
     _footer(slide3, 3)
     _notes(
         slide3,
@@ -430,12 +517,13 @@ def build_deck(root: Path | None = None) -> Path:
     # Slide 4
     slide4 = prs.slides.add_slide(blank)
     _title(slide4, "Spending more on paid social did not pay")
-    slide4.shapes.add_picture(
-        str(figures / "did_gap.png"),
+    pic = slide4.shapes.add_picture(
+        str(deck_figures / "did_gap.png"),
         Inches(0.4),
         Inches(1.15),
-        width=Inches(8.3),
+        width=Inches(8.6),
     )
+    _no_shadow(pic)
     spend_lift = (float(did["spend_ratio"]) - 1.0) * 100.0
     effect_pct = float(did["effect_pct"])
     ci_low_pct = (float(np.exp(float(did["ci_low"]))) - 1.0) * 100.0
@@ -460,7 +548,7 @@ def build_deck(root: Path | None = None) -> Path:
             {"size": 16, "color": INK, "space_after": 12},
         ),
     ]
-    _add_multiline(slide4, Inches(8.9), Inches(1.5), Inches(3.9), Inches(4.8), bullets4)
+    _add_multiline(slide4, Inches(9.2), Inches(1.15), Inches(3.6), Inches(4.8), bullets4)
     _footer(slide4, 4)
     _notes(
         slide4,
@@ -479,11 +567,10 @@ def build_deck(root: Path | None = None) -> Path:
     hold_width = Inches(5.9)
     hold_gap = Inches(0.35)
     hold_top = Inches(1.15)
-    hold_height = Inches(4.35)
-    hold_rows = []
-    for channel in hold_channels:
-        row = hold.loc[hold["channel"] == channel].iloc[0]
-        hold_rows.append(row)
+    hold_height = Inches(3.0)
+    hold_rows = [
+        hold.loc[hold["channel"] == channel].iloc[0] for channel in hold_channels
+    ]
 
     for idx, row in enumerate(hold_rows):
         channel = str(row["channel"])
@@ -492,7 +579,7 @@ def build_deck(root: Path | None = None) -> Path:
         _add_textbox(
             slide5,
             left + Inches(0.2),
-            hold_top + Inches(0.22),
+            hold_top + Inches(0.2),
             hold_width - Inches(0.4),
             Inches(0.35),
             f"HOLD  {channel_name(channel)}",
@@ -503,61 +590,97 @@ def build_deck(root: Path | None = None) -> Path:
             n_weeks = int((weekly["channel"] == "podcast").sum())
             estimated = life.loc[
                 (life["channel"] == "podcast")
-                & life["estimated"].astype(str).str.lower().isin(["true", "1", "1.0"])
+                & life["estimated"]
+                .astype(str)
+                .str.lower()
+                .isin(["true", "1", "1.0"])
             ]
             months_estimated = int(len(estimated))
             first_signup = weekly.loc[
                 weekly["channel"] == "podcast", "week_start"
             ].min()
-            settle = (pd.Timestamp(first_signup) + pd.DateOffset(months=12)).to_pydatetime()
+            settle = (
+                pd.Timestamp(first_signup) + pd.DateOffset(months=12)
+            ).to_pydatetime()
             settle_label = settle.strftime("%B %Y")
             churn = float(row["breakeven_churn_unknown_months"])
             low = float(row["lowest_other_churn"])
             high = float(row["highest_other_churn"])
             lines = [
                 (
-                    f"What we know: launched {n_weeks} weeks before the decision "
-                    f"date; we only have {months_estimated} months of customer history.",
-                    {"size": 14, "color": INK, "space_after": 10},
+                    f" launched {n_weeks} weeks before the decision date; we only "
+                    f"have {months_estimated} months of customer history.",
+                    {
+                        "size": 16,
+                        "color": INK,
+                        "space_after": 8,
+                        "label": "What we know:",
+                    },
                 ),
                 (
-                    "Break-even: it pays back if monthly cancellations after month 2 "
-                    f"stay at or below {pct_rate(churn)}%. Other channels range from "
+                    " it pays back if monthly cancellations after month 2 stay at "
+                    f"or below {pct_rate(churn)}%. Other channels range from "
                     f"{pct_rate(low)}% to {pct_rate(high)}%.",
-                    {"size": 14, "color": INK, "space_after": 10},
+                    {
+                        "size": 16,
+                        "color": INK,
+                        "space_after": 8,
+                        "label": "Break-even:",
+                    },
                 ),
                 (
-                    "What would settle it: 12 months of history for the first podcast "
-                    f"customers, which we will have by {settle_label}.",
-                    {"size": 14, "color": INK, "space_after": 8},
+                    " 12 months of history for the first podcast customers, which "
+                    f"we will have by {settle_label}.",
+                    {
+                        "size": 16,
+                        "color": INK,
+                        "space_after": 6,
+                        "label": "What would settle it:",
+                    },
                 ),
             ]
         else:
             lines = [
                 (
-                    "What we know: signups swing a lot from week to week.",
-                    {"size": 14, "color": INK, "space_after": 10},
+                    " signups swing a lot from week to week.",
+                    {
+                        "size": 16,
+                        "color": INK,
+                        "space_after": 8,
+                        "label": "What we know:",
+                    },
                 ),
                 (
-                    "Break-even: it needs about "
-                    f"{float(row['breakeven_signups_per_week']):.1f} signups a week. "
-                    f"We expect about {float(row['signups_per_week_median']):.1f} "
-                    f"(likely {float(row['signups_per_week_p5']):.1f} to "
-                    f"{float(row['signups_per_week_p95']):.1f}).",
-                    {"size": 14, "color": INK, "space_after": 10},
+                    " it needs about "
+                    f"{round(float(row['breakeven_signups_per_week']))} signups a "
+                    "week. We expect about "
+                    f"{round(float(row['signups_per_week_median']))} (likely "
+                    f"{round(float(row['signups_per_week_p5']))} to "
+                    f"{round(float(row['signups_per_week_p95']))}).",
+                    {
+                        "size": 16,
+                        "color": INK,
+                        "space_after": 8,
+                        "label": "Break-even:",
+                    },
                 ),
                 (
-                    "What would settle it: a holdout test, pausing mail in a random "
-                    "set of ZIP codes for 8 to 12 weeks, or 2 more quarters of data.",
-                    {"size": 14, "color": INK, "space_after": 8},
+                    " a holdout test, pausing mail in a random set of ZIP codes "
+                    "for 8 to 12 weeks, or 2 more quarters of data.",
+                    {
+                        "size": 16,
+                        "color": INK,
+                        "space_after": 6,
+                        "label": "What would settle it:",
+                    },
                 ),
             ]
         _add_multiline(
             slide5,
             left + Inches(0.2),
-            hold_top + Inches(0.7),
+            hold_top + Inches(0.6),
             hold_width - Inches(0.4),
-            Inches(3.4),
+            Inches(2.25),
             lines,
         )
 
@@ -565,7 +688,9 @@ def build_deck(root: Path | None = None) -> Path:
         "Also worth testing: how referral and paid search respond to more money. "
         "Our budget numbers assume they respond like paid social did."
     )
-    _add_textbox(slide5, Inches(0.5), Inches(5.7), Inches(12.3), Inches(0.7), closer, size=16)
+    _add_textbox(
+        slide5, Inches(0.5), Inches(4.4), Inches(12.3), Inches(0.7), closer, size=16
+    )
     _footer(slide5, 5)
     _notes(
         slide5,
@@ -578,14 +703,14 @@ def build_deck(root: Path | None = None) -> Path:
         "is borrowed from the paid social difference-in-differences result.",
     )
 
-    out = root / "deck" / "readout.pptx"
+    out = Path(out_path) if out_path is not None else root / "deck" / "readout.pptx"
     out.parent.mkdir(parents=True, exist_ok=True)
     prs.save(out)
     return out
 
 
 def main() -> None:
-    path = build_deck()
+    path = build_deck(project_root() / "deck" / "readout.pptx")
     print(path)
 
 

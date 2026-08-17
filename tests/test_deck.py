@@ -18,7 +18,6 @@ from acr.deck import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DECK = ROOT / "deck" / "readout.pptx"
 TABLES = ROOT / "outputs" / "tables"
 EM_DASH = "\u2014"
 
@@ -43,14 +42,14 @@ def _all_text(prs: Presentation) -> str:
     return "\n".join(parts)
 
 
-def test_deck_has_five_titled_slides_with_notes_and_footer():
-    build_deck()
-    prs = Presentation(DECK)
+def test_deck_has_five_titled_slides_with_notes_and_footer(tmp_path: Path):
+    out = tmp_path / "readout.pptx"
+    build_deck(out)
+    prs = Presentation(out)
     assert len(prs.slides) == 5
     for idx, slide in enumerate(prs.slides, start=1):
         text = _slide_text(slide)
         assert text.strip(), idx
-        # Title is the first non-empty text box content we wrote.
         assert len(text.splitlines()[0].strip()) > 0
         notes = _notes_text(slide).strip()
         assert notes, idx
@@ -58,9 +57,10 @@ def test_deck_has_five_titled_slides_with_notes_and_footer():
         assert f"{idx} / 5" in text
 
 
-def test_slide_one_shows_each_channel_ratio():
-    build_deck()
-    prs = Presentation(DECK)
+def test_slide_one_shows_each_channel_ratio(tmp_path: Path):
+    out = tmp_path / "readout.pptx"
+    build_deck(out)
+    prs = Presentation(out)
     text = _slide_text(prs.slides[0])
     decisions = pd.read_csv(TABLES / "decisions.csv")
     for _, row in decisions.iterrows():
@@ -68,9 +68,10 @@ def test_slide_one_shows_each_channel_ratio():
         assert ratio_phrase(float(row["R_median"])) in text
 
 
-def test_slide_four_and_five_show_key_formatted_numbers():
-    build_deck()
-    prs = Presentation(DECK)
+def test_slide_four_and_five_show_key_formatted_numbers(tmp_path: Path):
+    out = tmp_path / "readout.pptx"
+    build_deck(out)
+    prs = Presentation(out)
     did = pd.read_csv(TABLES / "did_translation.csv").iloc[0]
     slide4 = _slide_text(prs.slides[3])
     assert f"{pct_points(float(did['effect_pct']))}%" in slide4
@@ -81,22 +82,28 @@ def test_slide_four_and_five_show_key_formatted_numbers():
     podcast = hold.loc[hold["channel"] == "podcast"].iloc[0]
     mail = hold.loc[hold["channel"] == "direct_mail"].iloc[0]
     assert f"{pct_rate(float(podcast['breakeven_churn_unknown_months']))}%" in slide5
-    assert f"{float(mail['breakeven_signups_per_week']):.1f}" in slide5
+    assert str(round(float(mail["breakeven_signups_per_week"]))) in slide5
+    assert str(round(float(mail["signups_per_week_median"]))) in slide5
+    assert str(round(float(mail["signups_per_week_p5"]))) in slide5
+    assert str(round(float(mail["signups_per_week_p95"]))) in slide5
 
 
-def test_slides_two_three_four_each_have_one_picture():
-    build_deck()
-    prs = Presentation(DECK)
+def test_slides_two_three_four_each_have_one_picture(tmp_path: Path):
+    out = tmp_path / "readout.pptx"
+    build_deck(out)
+    prs = Presentation(out)
     for index in (1, 2, 3):
         pictures = [
-            shape for shape in prs.slides[index].shapes if shape.shape_type is not None and shape.shape_type == 13
+            shape
+            for shape in prs.slides[index].shapes
+            if shape.shape_type is not None and shape.shape_type == 13
         ]
-        # 13 is MSO_SHAPE_TYPE.PICTURE
         assert len(pictures) == 1, index
 
 
-def test_deck_has_no_em_dashes():
-    build_deck()
-    prs = Presentation(DECK)
+def test_deck_has_no_em_dashes(tmp_path: Path):
+    out = tmp_path / "readout.pptx"
+    build_deck(out)
+    prs = Presentation(out)
     text = _all_text(prs)
     assert EM_DASH not in text

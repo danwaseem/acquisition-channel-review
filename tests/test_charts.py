@@ -25,10 +25,27 @@ EXPECTED = {
 }
 
 
+DECK_EXPECTED = {
+    "net_contribution.png": (1600, 900),
+    "ratio_ranges.png": (1600, 900),
+    "did_gap.png": (1600, 900),
+}
+
+
 def test_chart_cli_writes_all_pngs_at_the_expected_size():
     make_all_charts()
     for name, size in EXPECTED.items():
         path = FIGURES / name
+        assert path.exists(), name
+        assert path.stat().st_size > 20_000, (name, path.stat().st_size)
+        with Image.open(path) as image:
+            assert image.size == size, (name, image.size)
+
+
+def test_deck_chart_copies_exist_at_the_same_pixel_size():
+    make_all_charts()
+    for name, size in DECK_EXPECTED.items():
+        path = FIGURES / "deck" / name
         assert path.exists(), name
         assert path.stat().st_size > 20_000, (name, path.stat().st_size)
         with Image.open(path) as image:
