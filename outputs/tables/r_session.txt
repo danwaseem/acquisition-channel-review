@@ -53,3 +53,5 @@ Package versions used:
     "_row": "jsonlite"
   }
 ]
+
+fixest version used for DiD: 0.14.2
