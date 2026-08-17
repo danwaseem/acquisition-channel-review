@@ -116,3 +116,11 @@ def test_deck_auto_shapes_have_no_p_style(tmp_path: Path):
     for idx, slide in enumerate(prs.slides, start=1):
         xml = slide._element.xml
         assert "<p:style>" not in xml, idx
+
+
+def test_build_deck_is_byte_identical_across_runs(tmp_path: Path):
+    first = tmp_path / "first.pptx"
+    second = tmp_path / "second.pptx"
+    build_deck(first)
+    build_deck(second)
+    assert first.read_bytes() == second.read_bytes()

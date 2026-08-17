@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import zipfile
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +15,9 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
+
+FIXED_DECK_TIME = datetime(2025, 12, 29, 0, 0, 0)
+FIXED_ZIP_DATE = (2025, 12, 29, 0, 0, 0)
 
 INK = RGBColor(0x0B, 0x0B, 0x0B)
 MUTED = RGBColor(0x52, 0x51, 0x4E)
@@ -714,8 +720,35 @@ def build_deck(out_path: Path | None = None, root: Path | None = None) -> Path:
 
     out = Path(out_path) if out_path is not None else root / "deck" / "readout.pptx"
     out.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(out)
+    _set_fixed_core_properties(prs)
+    _save_pptx_deterministic(prs, out)
     return out
+
+
+def _set_fixed_core_properties(prs: Presentation) -> None:
+    props = prs.core_properties
+    props.author = "Danish Waseem"
+    props.title = "Acquisition Channel Review"
+    props.last_modified_by = "Danish Waseem"
+    props.revision = 1
+    props.created = FIXED_DECK_TIME
+    props.modified = FIXED_DECK_TIME
+
+
+def _save_pptx_deterministic(prs: Presentation, out_path: Path) -> None:
+    """Save a pptx with fixed metadata timestamps and zip entry dates."""
+    buffer = BytesIO()
+    prs.save(buffer)
+    buffer.seek(0)
+    with zipfile.ZipFile(buffer, "r") as source:
+        with zipfile.ZipFile(
+            out_path, "w", compression=zipfile.ZIP_DEFLATED
+        ) as destination:
+            for info in source.infolist():
+                data = source.read(info.filename)
+                entry = zipfile.ZipInfo(filename=info.filename, date_time=FIXED_ZIP_DATE)
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                destination.writestr(entry, data)
 
 
 def main() -> None:
