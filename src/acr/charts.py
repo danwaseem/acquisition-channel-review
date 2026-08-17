@@ -493,61 +493,94 @@ def chart_retention_curves(tables: Path, figures: Path) -> Path:
     return path
 
 
+def waterfall_segments(
+    steps: list[tuple[str, float]],
+) -> list[tuple[str, float, float]]:
+    """Turn ordered (label, change) steps into (label, start, end) bars.
+
+    The first bar starts at 0. Each later step bar continues the running
+    total. The last bar is the Net change total from 0 to that final total.
+    """
+    if not steps:
+        return []
+    segments: list[tuple[str, float, float]] = []
+    running = 0.0
+    last_index = len(steps) - 1
+    for idx, (label, change) in enumerate(steps):
+        if idx == last_index:
+            segments.append((label, 0.0, running))
+        else:
+            start = running
+            end = running + float(change)
+            segments.append((label, start, end))
+            running = end
+    return segments
+
+
 def chart_budget_change(tables: Path, figures: Path) -> Path:
     budget = pd.read_csv(tables / "budget_scenario.csv").set_index("channel")
     decisions = pd.read_csv(tables / "decisions.csv")
     fund = decisions.loc[decisions["call"] == "FUND", "channel"].tolist()
 
-    labels = ["Stop paid social and affiliate"]
-    values = [float(budget.loc["stop_cut_channels", "extra_net_median"])]
+    steps: list[tuple[str, float]] = [
+        (
+            "Stop paid social and affiliate",
+            float(budget.loc["stop_cut_channels", "extra_net_median"]),
+        )
+    ]
     for channel in fund:
-        labels.append(channel_name(channel))
-        values.append(float(budget.loc[channel, "extra_net_median"]))
-    labels.append("Net change")
-    values.append(float(budget.loc["cut_and_redirect", "extra_net_median"]))
+        steps.append(
+            (channel_name(channel), float(budget.loc[channel, "extra_net_median"]))
+        )
+    steps.append(
+        ("Net change", float(budget.loc["cut_and_redirect", "extra_net_median"]))
+    )
+    segments = waterfall_segments(steps)
 
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=200)
     apply_style(ax)
-    x = np.arange(len(values))
-    # Waterfall connector bases.
-    running = 0.0
-    bottoms = []
-    for idx, value in enumerate(values[:-1]):
-        bottoms.append(running if value >= 0 else running + value)
-        running += value
-    bottoms.append(0.0)
+    width = 0.62
+    half = width / 2.0
+    x = np.arange(len(segments))
 
-    colors = []
-    for idx, value in enumerate(values):
-        if idx == len(values) - 1:
-            colors.append(BLUE)
-        elif value >= 0:
-            colors.append(POSITIVE)
+    for idx, (label, start, end) in enumerate(segments):
+        bottom = min(start, end)
+        height = abs(end - start)
+        if label == "Net change":
+            color = BLUE
+        elif end > start:
+            color = POSITIVE
         else:
-            colors.append(NEGATIVE)
-
-    ax.bar(x, values, bottom=bottoms, color=colors, width=0.62, linewidth=0)
-    for idx in range(len(values) - 2):
-        end_y = bottoms[idx] + values[idx]
-        ax.plot([idx + 0.31, idx + 0.69], [end_y, end_y], color=MUTED, linewidth=1.0)
-
-    for idx, value in enumerate(values):
-        y = bottoms[idx] + value
-        va = "bottom" if value >= 0 else "top"
-        offset = 4000 if value >= 0 else -4000
+            color = NEGATIVE
+        ax.bar(
+            x[idx],
+            height,
+            bottom=bottom,
+            color=color,
+            width=width,
+            linewidth=0,
+        )
+        if idx < len(segments) - 1:
+            ax.plot(
+                [x[idx] + half, x[idx + 1] - half],
+                [end, end],
+                color=MUTED,
+                linewidth=1.0,
+            )
+        change = end - start
         ax.text(
-            idx,
-            y + offset,
-            money_k(value),
+            x[idx],
+            max(start, end) + 4000.0,
+            money_k(change),
             ha="center",
-            va=va,
+            va="bottom",
             color=INK,
             fontsize=9,
         )
 
     ax.axhline(0, color=MUTED, linewidth=1.0)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, color=MUTED, fontsize=9)
+    ax.set_xticklabels([label for label, _start, _end in segments], color=MUTED, fontsize=9)
     ax.yaxis.set_major_formatter(
         plt.FuncFormatter(lambda value, _pos: "$0" if abs(value) < 0.5 else money_k(value))
     )
