@@ -257,9 +257,17 @@ def _title(slide, text: str) -> None:
     )
 
 
+def _clear_auto_shape_style(shape) -> None:
+    el = shape._element
+    style = el.find(qn("p:style"))
+    if style is not None:
+        el.remove(style)
+
+
 def _card(slide, left, top, width, height, call: str):
     shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
     _no_shadow(shape)
+    _clear_auto_shape_style(shape)
     shape.fill.solid()
     shape.fill.fore_color.rgb = CARD_FILL
     shape.line.color.rgb = CARD_LINE
@@ -268,6 +276,7 @@ def _card(slide, left, top, width, height, call: str):
         MSO_SHAPE.RECTANGLE, left, top, width, Inches(0.12)
     )
     _no_shadow(strip)
+    _clear_auto_shape_style(strip)
     strip.fill.solid()
     strip.fill.fore_color.rgb = CALL_RGB[call]
     strip.line.fill.background()
@@ -567,7 +576,7 @@ def build_deck(out_path: Path | None = None, root: Path | None = None) -> Path:
     hold_width = Inches(5.9)
     hold_gap = Inches(0.35)
     hold_top = Inches(1.15)
-    hold_height = Inches(3.0)
+    hold_height = Inches(3.5)
     hold_rows = [
         hold.loc[hold["channel"] == channel].iloc[0] for channel in hold_channels
     ]
@@ -689,7 +698,7 @@ def build_deck(out_path: Path | None = None, root: Path | None = None) -> Path:
         "Our budget numbers assume they respond like paid social did."
     )
     _add_textbox(
-        slide5, Inches(0.5), Inches(4.4), Inches(12.3), Inches(0.7), closer, size=16
+        slide5, Inches(0.5), Inches(4.9), Inches(12.3), Inches(0.7), closer, size=16
     )
     _footer(slide5, 5)
     _notes(

@@ -107,3 +107,12 @@ def test_deck_has_no_em_dashes(tmp_path: Path):
     prs = Presentation(out)
     text = _all_text(prs)
     assert EM_DASH not in text
+
+
+def test_deck_auto_shapes_have_no_p_style(tmp_path: Path):
+    out = tmp_path / "readout.pptx"
+    build_deck(out)
+    prs = Presentation(out)
+    for idx, slide in enumerate(prs.slides, start=1):
+        xml = slide._element.xml
+        assert "<p:style>" not in xml, idx

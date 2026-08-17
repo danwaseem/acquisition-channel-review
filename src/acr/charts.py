@@ -339,8 +339,10 @@ def chart_did_gap(tables: Path, figures: Path, *, deck: bool = False) -> Path:
         zorder=5,
         bbox=label_box,
     )
-    ax.set_ylabel("Paid social signups vs other channels (% vs normal)")
-    if not deck:
+    if deck:
+        ax.set_ylabel("Paid social vs other channels (%)")
+    else:
+        ax.set_ylabel("Paid social signups vs other channels (% vs normal)")
         ax.set_title("What the paid social budget increase did")
     fig.subplots_adjust(
         left=0.12,
