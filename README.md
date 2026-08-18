@@ -21,11 +21,19 @@ See [docs/analysis_plan.md](docs/analysis_plan.md), [docs/simulation_design.md](
 
 In July to September 2024 the paid social budget rose by 51%. Signups rose about 19% compared with channels we did not change, with a likely range of 9% to 30%. Each extra signup cost about $178, versus about $79 for a normal signup. A fake earlier event and a check after spend went back to normal both sat near zero.
 
-I back-tested three seasonal signup forecasts on four held-out 13-week quarters. The chosen methods and mean weekly errors were: paid search, harmonic regression with spend, 7.5%; paid social, harmonic regression, 8.2%; affiliate, harmonic regression, 9.0%; referral, harmonic regression, 12.7%; direct mail, harmonic regression, 32.7%. Podcast was too new for that back-test, so I used the short-history rule.
+I back-tested three seasonal signup forecasts on four held-out 13-week quarters. Harmonic regression means fitting the yearly pattern with smooth sine and cosine waves, with the leftover week-to-week noise modelled separately. The chosen methods and mean weekly errors were: paid search, harmonic regression with spend, 7.5%; paid social, harmonic regression, 8.2%; affiliate, harmonic regression, 9.0%; referral, harmonic regression, 12.7%; direct mail, harmonic regression, 32.7%. Podcast was too new for that back-test, so I used a short-history rule: I took the seasonal pattern from the other channels and fit only podcast's own level.
 
 Podcast and direct mail stay on HOLD. Podcast has only 2 estimated months of retention history, and most later months use the range rule from other channels. It pays back if monthly cancellations after month 2 stay at or below 8.5%. Other channels range from 2.8% to 13.0%. Twelve months of history for the first podcast customers would settle that. Direct mail needs about 40 signups a week to break even. I expect about 38 (likely 34 to 43). A ZIP-code holdout pause, or two more quarters of data, would settle that.
 
 If I stop paid social and affiliate, that frees about $541k of planned yearly media spend and adds about $310k in 12-month profit from stopping the losses. Moving that freed spend all at once into paid search and referral, in proportion to their current spend, and assuming they respond like paid social did, still leaves about $192k of net gain overall. That response size is an assumption borrowed from the paid social test. I would move the money in steps and test each step.
+
+## Did the analysis find the planted effects?
+
+- All 6 fund, cut and hold calls match the planted answer.
+- The paid social effect came out at +19% (true +22.5%). The true value sits inside the likely range of 9% to 30%. The implied response to spend was 0.43 (true 0.50).
+- 12-month value per subscriber came out within 1.6% of the truth for every channel with full history.
+- 2026 signup forecasts came out within 4% of the true expected signups for every channel, and every true value sat inside its 90% range.
+- Tests check each of these, so a broken step fails the build.
 
 ## Charts
 
